@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spesa AN.TON.25</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; }
+    .current-item { background: #fef3c7 !important; border: 2px solid #f59e0b !important; }
+    .completed-item { opacity: 0.6; text-decoration: line-through; }
+    .floating-control {
+      position: fixed; bottom: 20px; right: 20px;
+      background: linear-gradient(135deg,#10b981 0%,#059669 100%);
+      color: #fff; padding: 18px; border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(16,185,129,.4); z-index: 1000; min-width: 300px;
+    }
+    .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.7} }
+    .notification {
+      position: fixed; top: 20px; right: 20px; background: #10b981; color: #fff;
+      padding: 12px 16px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.2);
+      z-index: 2000; display: none; animation: slideIn .3s ease-out;
+    }
+    .notification.show { display: block; }
+    @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .btn-linklike { display: inline-block; text-align: center; width: 100%; padding: 12px 16px; background: #f1f5f9; color: #0f172a; border-radius: 10px; font-weight: 700; }
+    .btn-linklike:hover { background: #e2e8f0; }
+    .iframe-warning { background: #fff3cd; color: #664d03; border: 1px solid #ffecb5; padding: 12px; border-radius: 10px; margin: 16px 0; display: none; }
+    .iframe-warning.show { display: block; }
+    .disabled { opacity: .5; pointer-events: none; }
+    .nav-btn.active { background: #111827; color: white; }
+    .nav-btn { background: #f3f4f6; color: #111827; }
+    .kbd { background:#111827; color:#fff; padding:2px 6px; border-radius:6px; font-size:12px; }
+    canvas { image-rendering: crisp-edges; }
+    .table-header { background: #f8fafc; border-bottom: 1px solid #e5e7eb; font-weight: 700; color: #334155 }
+    .col-label { font-size: 12px; color: #64748b; font-weight: 600; }
+    .row { border-bottom: 1px solid #e5e7eb; padding: 8px 0; }
+    .pill { background:#f1f5f9; border-radius:9999px; padding:4px 10px; font-size:12px; color:#334155; }
+    .badge { font-size: 11px; padding: 2px 6px; border-radius: 6px; }
+    .badge-ok { background:#dcfce7; color:#166534; }
+    .badge-warn { background:#fef3c7; color:#92400e; }
+  </style>
+</head>
+<body class="bg-gray-50">
+
+  <div class="notification" id="notification"></div>
+
+  <header class="bg-gradient-to-r from-blue-500 to-green-500 text-white py-6 px-4 shadow-lg">
+    <div class="container mx-auto max-w-6xl">
+      <h1 class="text-3xl font-bold mb-2">🛒 Spesa AN.TON.25</h1>
+      <p class="text-blue-100 text-sm">Liste salvate nella pagina Lista, ricerca con copia negli appunti, riepilogo spese e grafico mensile. Tutto in locale.</p>
+    </div>
+  </header>
+
+  <div class="container mx-auto max-w-6xl px-4 py-6">
+
+    <!-- Banner iframe -->
+    <div id="iframeBanner" class="iframe-warning">
+      Stai usando l'app in anteprima/iframe. Per aprire i siti correttamente, apri questa pagina in una nuova scheda:
+      <a id="selfLink" class="underline font-semibold" href="#" target="_blank" rel="noopener">Apri questa app in una nuova scheda</a>.
+      Poi usa "Apri Sito".
+    </div>
+
+    <!-- NAV TABS -->
+    <nav class="bg-white rounded-xl shadow-md p-3 mb-6 flex flex-wrap gap-2">
+      <button class="nav-btn px-4 py-2 rounded-lg font-semibold" data-tab="lista" onclick="switchTab('lista')">📝 Lista</button>
+      <button class="nav-btn px-4 py-2 rounded-lg font-semibold" data-tab="ricerca" onclick="switchTab('ricerca')">🔍 Ricerca</button>
+      <button class="nav-btn px-4 py-2 rounded-lg font-semibold" data-tab="riepilogo" onclick="switchTab('riepilogo')">📊 Riepilogo</button>
+      <button class="nav-btn px-4 py-2 rounded-lg font-semibold" data-tab="impostazioni" onclick="switchTab('impostazioni')">⚙️ Impostazioni</button>
+      <div class="flex-1"></div>
+      <div class="text-xs text-gray-500 self-center">Scorciatoie: <span class="kbd">Ctrl/⌘ + Shift + O</span> apri sito • <span class="kbd">Ctrl/⌘ + Shift + N</span> prossimo</div>
+    </nav>
+
+    <!-- TAB LISTA -->
+    <div id="tab-lista" class="tab active">
+      <!-- Gestione liste integrata -->
+      <div class="bg-white rounded-xl shadow-md p-4 mb-6">
+        <div class="flex flex-wrap gap-3 items-center">
+          <div class="flex items-center gap-2">
+            <span class="col-label">Lista:</span>
+            <select id="activeListSelect" class="border rounded px-3 py-2" onchange="onSwitchActiveList(this.value)"></select>
+            <span class="badge badge-ok" id="activeListInfo">—</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="newListNameTop" type="text" class="border rounded px-3 py-2" placeholder="Nuovo nome lista">
+            <button onclick="saveCurrentListAsTop()" class="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 text-sm">Salva come nuova</button>
+            <button onclick="saveCurrentList()" class="bg-purple-500 text-white px-3 py-2 rounded-lg hover:bg-purple-600 text-sm">Salva</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="renameActiveList()" class="bg-gray-100 px-3 py-2 rounded-lg hover:bg-gray-200 text-sm">Rinomina</button>
+            <button onclick="deleteActiveList()" class="bg-red-100 text-red-600 px-3 py-2 rounded-lg hover:bg-red-200 text-sm">Elimina</button>
+          </div>
+          <div class="flex-1"></div>
+          <span class="pill"><span id="count">0</span> articoli</span>
+          <div class="text-sm text-gray-600">
+            Totale max stimato: <span class="font-bold" id="predictedTotal">€0,00</span>
+            <span class="text-xs text-gray-500">(<span id="maxCount">0</span>/<span id="rowCount">0</span> righe con max)</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <h3 class="font-bold text-lg mb-3">📝 Incolla la tua lista</h3>
+        <textarea id="quickInput" class="w-full border-2 border-gray-200 rounded-lg p-3 mb-3 focus:border-blue-500 focus:outline-none" rows="5" placeholder="Esempi:
+pasta Barilla n.5 1kg x2
+latte intero 1L
+passata di pomodoro Mutti 700g max 2.20€"></textarea>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="parseList()" class="bg-green-500 text-white px-5 py-2 rounded-lg hover:bg-green-600 font-semibold">✨ Crea righe</button>
+          <button onclick="loadExample()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300">Esempio</button>
+          <button onclick="resetAll()" class="bg-red-100 text-red-600 px-4 py-2 rounded-lg hover:bg-red-200">Reset</button>
+          <div class="flex-1"></div>
+          <button onclick="exportCSV()" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 text-sm">📥 CSV</button>
+          <button onclick="exportJSON()" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 text-sm">📥 JSON</button>
+          <input type="file" id="fileImport" accept=".csv,.json" style="display:none" onchange="importFile(event)">
+          <button onclick="document.getElementById('fileImport').click()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 text-sm">📤 Importa</button>
+        </div>
+        <p id="predictedHint" class="text-xs text-yellow-700 mt-3 hidden">Suggerimento: compila o stima il campo "Max" per stimare il budget totale.</p>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-lg">🛍️ Lista della spesa</h3>
+          <div class="flex gap-2">
+            <button onclick="estimateAllPrices()" class="bg-amber-500 text-white px-4 py-2 rounded-lg hover:bg-amber-600 text-sm">🤖 Stima tutti i prezzi</button>
+          </div>
+        </div>
+
+        <!-- Intestazioni -->
+        <div class="hidden md:grid md:grid-cols-8 gap-2 py-2 px-2 table-header rounded-lg">
+          <div class="md:col-span-2">Prodotto</div>
+          <div>Marca</div>
+          <div>Quantità</div>
+          <div>Pezzi</div>
+          <div>Max (€)</div>
+          <div>Stima online</div>
+          <div>Azioni</div>
+        </div>
+
+        <div id="itemsList" class="space-y-2 mt-1"></div>
+      </div>
+
+      <div class="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl shadow-lg p-8 text-center text-white">
+        <h3 class="text-2xl font-bold mb-3">Pronto per la ricerca?</h3>
+        <p class="mb-6 text-green-100">Ogni query viene copiata negli appunti</p>
+        <button onclick="startSearchMode(); switchTab('ricerca');" class="px-6 py-3 rounded-lg bg-white text-green-700 font-bold hover:bg-green-50">🚀 Avvia Ricerca Automatica</button>
+      </div>
+    </div>
+
+    <!-- TAB RICERCA -->
+    <div id="tab-ricerca" class="tab">
+      <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-bold text-xl">🔍 Ricerca in corso</h3>
+          <button onclick="stopSearchMode()" class="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600">⏹ Ferma</button>
+        </div>
+        <div class="bg-green-50 border-2 border-green-200 rounded-lg p-4 mb-4">
+          <div class="text-sm text-green-700 font-semibold mb-1">Query corrente:</div>
+          <div id="currentQuery" class="text-2xl font-bold text-green-900 mb-2">-</div>
+          <div id="currentMeta" class="text-sm text-green-600">-</div>
+        </div>
+        <div class="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-4">
+          <h4 class="font-bold text-blue-900 mb-2">📋 Istruzioni:</h4>
+          <ol class="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+            <li>Clicca "Apri Sito (nuova scheda)"</li>
+            <li>La query è già negli appunti</li>
+            <li>Nella scheda del supermercato, incolla nel campo di ricerca</li>
+            <li>Torna qui e premi "Prossimo"</li>
+          </ol>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+          <a id="openStoreNewTab" href="#" class="btn-linklike" onclick="return openStoreFallback(event,false)">🌐 Apri Sito (nuova scheda)</a>
+          <button id="openStoreSameTab" onclick="openStoreFallback(event,true)" class="btn-linklike bg-white">↪️ Apri Sito (questa scheda)</button>
+          <button id="openStoreForce" onclick="forceOpenStore()" class="btn-linklike bg-yellow-100">🛠 Forza apertura</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-md p-6">
+        <h3 class="font-bold text-lg mb-4">📋 Progressione</h3>
+        <div id="searchList" class="space-y-2"></div>
+      </div>
+    </div>
+
+    <!-- TAB RIEPILOGO -->
+    <div id="tab-riepilogo" class="tab">
+      <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <h3 class="font-bold text-lg mb-4">➕ Aggiungi spesa</h3>
+        <div class="grid md:grid-cols-5 gap-3 items-end">
+          <div>
+            <label class="text-sm text-gray-600">Data</label>
+            <input id="expDate" type="date" class="w-full border rounded px-3 py-2">
+          </div>
+          <div>
+            <label class="text-sm text-gray-600">N. articoli</label>
+            <input id="expItems" type="number" min="0" class="w-full border rounded px-3 py-2">
+          </div>
+          <div>
+            <label class="text-sm text-gray-600">Costo (€)</label>
+            <input id="expCost" type="number" min="0" step="0.01" class="w-full border rounded px-3 py-2">
+          </div>
+          <div class="md:col-span-2">
+            <label class="text-sm text-gray-600">Nota (opz.)</label>
+            <input id="expNote" type="text" class="w-full border rounded px-3 py-2" placeholder="es. Spesa settimanale">
+          </div>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button onclick="addExpense()" class="bg-green-500 text-white px-5 py-2 rounded-lg hover:bg-green-600 font-semibold">Aggiungi</button>
+          <button onclick="loadTodayFromList()" class="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg hover:bg-blue-200">Precompila con lista attuale</button>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white rounded-xl shadow-md p-5">
+          <div class="text-sm text-gray-500">Totale mese corrente</div>
+          <div class="text-2xl font-bold" id="sumMonth">€0,00</div>
+          <div class="text-xs text-gray-500" id="sumMonthMeta">0 spese</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-md p-5">
+          <div class="text-sm text-gray-500">Totale anno corrente</div>
+          <div class="text-2xl font-bold" id="sumYear">€0,00</div>
+          <div class="text-xs text-gray-500" id="sumYearMeta">0 spese</div>
+        </div>
+        <div class="bg-white rounded-xl shadow-md p-5">
+          <div class="text-sm text-gray-500">Media per spesa (anno)</div>
+          <div class="text-2xl font-bold" id="avgYear">€0,00</div>
+          <div class="text-xs text-gray-500" id="avgYearMeta">0 articoli/spesa</div>
+        </div>
+      </div>
+
+      <!-- Grafico mensile -->
+      <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-lg">Andamento mensile (anno corrente)</h3>
+          <div class="text-sm text-gray-500" id="chartMeta">—</div>
+        </div>
+        <div class="w-full overflow-x-auto">
+          <canvas id="monthChart" width="900" height="280" class="bg-gray-50 rounded-lg border border-gray-200"></canvas>
+        </div>
+        <div class="text-xs text-gray-500 mt-2">Suggerimento: aggiungi più spese con date diverse per vedere il grafico popolarsi.</div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-md p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-bold text-lg">Storico spese</h3>
+          <div class="flex gap-2">
+            <button onclick="exportExpensesJSON()" class="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 text-sm">Export JSON</button>
+            <input type="file" id="expImport" accept=".json" style="display:none" onchange="importExpensesJSON(event)">
+            <button onclick="document.getElementById('expImport').click()" class="bg-indigo-500 text-white px-4 py-2 rounded-lg hover:bg-indigo-600 text-sm">Import JSON</button>
+          </div>
+        </div>
+        <div class="overflow-auto">
+          <table class="min-w-full text-sm">
+            <thead>
+              <tr class="text-left text-gray-600 border-b">
+                <th class="py-2 pr-3">Data</th>
+                <th class="py-2 pr-3">Articoli</th>
+                <th class="py-2 pr-3">Costo (€)</th>
+                <th class="py-2 pr-3">% vs prec.</th>
+                <th class="py-2 pr-3">Nota</th>
+                <th class="py-2 pr-3"></th>
+              </tr>
+            </thead>
+            <tbody id="expTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB IMPOSTAZIONI -->
+    <div id="tab-impostazioni" class="tab">
+      <div class="bg-white rounded-xl shadow-md p-6 mb-6">
+        <h3 class="font-bold text-lg mb-4">Supermercato / Sito di acquisto</h3>
+        <div class="grid md:grid-cols-3 gap-3 mb-3">
+          <div>
+            <label class="text-sm text-gray-600">Preset</label>
+            <select id="presetSelect" class="w-full border rounded px-3 py-2" onchange="applyPreset(this.value)">
+              <option value="ali">Alì</option>
+              <option value="esselunga">Esselunga</option>
+              <option value="coop">Coop</option>
+              <option value="conad">Conad</option>
+              <option value="amazonfresh">Amazon Fresh</option>
+              <option value="custom">Personalizzato</option>
+            </select>
+          </div>
+          <div class="md:col-span-2">
+            <label class="text-sm text-gray-600">URL del sito</label>
+            <input id="storeUrlInput" type="url" class="w-full border rounded px-3 py-2" placeholder="https://...">
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600" onclick="saveSettings()">Salva impostazioni</button>
+          <button class="bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200" onclick="testOpenStore()">Apri Sito (test)</button>
+        </div>
+        <p class="mt-3 text-sm text-gray-500">Apri questa app in una scheda del browser (non in anteprima) per evitare blocchi.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Floating control per Ricerca -->
+  <div class="floating-control" id="floatCtrl" style="display:none">
+    <div class="text-sm font-semibold mb-1"><span id="floatProgress">0/0</span></div>
+    <div class="text-xs opacity-80 mb-3" id="floatQuery">-</div>
+    <div class="flex gap-2">
+      <a id="openStoreFloat" href="#" class="flex-1 bg-white bg-opacity-20 hover:bg-opacity-30 px-4 py-3 rounded-lg font-semibold text-sm text-center" onclick="return openStoreFallback(event,false)">🌐 Apri Sito</a>
+      <button onclick="nextItem()" class="flex-1 bg-white text-green-700 px-4 py-3 rounded-lg font-bold hover:bg-green-50 pulse">Prossimo →</button>
+    </div>
+  </div>
+
+  <script>
+    // === Chiavi LocalStorage ===
+    const STORAGE_KEY = 'spesa_ali_list_v4';
+    const SETTINGS_KEY = 'spesa_ali_settings_v1';
+    const LISTS_KEY = 'spesa_ali_lists_v1';
+    const EXPENSES_KEY = 'spesa_ali_expenses_v1';
+
+    // === Stato ===
+    let items = [];
+    let currentIndex = -1;
+    let settings = { storeUrl: '', storePreset: 'ali' };
+    const STORE_PRESETS = {
+      ali: 'https://www.alisupermercati.it/aliperme',
+      esselunga: 'https://www.esselungaacasa.it/',
+      coop: 'https://spesaonline.e-coop.it/',
+      conad: 'https://spesaonline.conad.it/',
+      amazonfresh: 'https://www.amazon.it/alm/storefront?almBrandId=QW1hem9uIEZyZXNo',
+      custom: ''
+    };
+    let listsState = { activeListId: null, lists: {} };
+    let expenses = [];
+
+    // === Utilità ===
+    function inIframe() { try { return window.self !== window.top; } catch { return true; } }
+    function notify(msg){ const el=document.getElementById('notification'); el.textContent=msg; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),3000); }
+    function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+    function genId(){ return 'L' + Math.random().toString(36).slice(2,9); }
+    function fmtMoney(n){ const v=Number(n||0); return v.toLocaleString('it-IT',{style:'currency',currency:'EUR'}); }
+    function toISO(d){ const dt = d instanceof Date ? d : new Date(d); if(Number.isNaN(dt.getTime())) return ''; const y=dt.getFullYear(); const m=String(dt.getMonth()+1).padStart(2,'0'); const dd=String(dt.getDate()).padStart(2,'0'); return `${y}-${m}-${dd}`; }
+
+    // === Tabs ===
+    function switchTab(name){
+      ['lista','ricerca','riepilogo','impostazioni'].forEach(t=>{
+        document.getElementById('tab-'+t).classList.toggle('active', t===name);
+        const btn = document.querySelector(`[data-tab="${t}"]`);
+        if (btn) btn.classList.toggle('active', t===name);
+      });
+      document.getElementById('floatCtrl').style.display = (name==='ricerca') ? 'block' : 'none';
+      if (name==='riepilogo') { renderExpenses(); drawMonthlyChart(); }
+      if (name==='lista') { updatePredictedTotal(); }
+    }
+
+    // === Impostazioni ===
+    function loadSettings(){
+      try { const d=localStorage.getItem(SETTINGS_KEY); if(d) settings=JSON.parse(d); } catch {}
+      if (!settings.storeUrl) { settings.storePreset='ali'; settings.storeUrl=STORE_PRESETS.ali; }
+      const presetSel=document.getElementById('presetSelect');
+      const urlInput=document.getElementById('storeUrlInput');
+      if (presetSel) presetSel.value = settings.storePreset || 'ali';
+      if (urlInput) urlInput.value = settings.storeUrl || '';
+    }
+    function saveSettings(){
+      const presetSel=document.getElementById('presetSelect');
+      const urlInput=document.getElementById('storeUrlInput');
+      const url = (urlInput?.value || '').trim();
+      if (!url) { alert('Inserisci un URL valido'); return; }
+      settings.storePreset = presetSel ? presetSel.value : 'custom';
+      settings.storeUrl = url;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      notify('✓ Impostazioni salvate');
+    }
+    function applyPreset(preset){
+      const urlInput=document.getElementById('storeUrlInput');
+      urlInput.value = STORE_PRESETS[preset] || '';
+    }
+    function getStoreUrl(){ return settings.storeUrl || STORE_PRESETS.ali; }
+
+    // === Liste salvate (in pagina Lista) ===
+    function loadLists(){
+      try { const d=localStorage.getItem(LISTS_KEY); if(d) listsState=JSON.parse(d); } catch {}
+      if (!listsState.activeListId || Object.keys(listsState.lists).length===0){
+        try {
+          const old = localStorage.getItem(STORAGE_KEY);
+          const oldItems = old ? JSON.parse(old) : [];
+          const id = genId();
+          listsState.activeListId = id;
+          listsState.lists[id] = { id, name:'Default', items: Array.isArray(oldItems)? oldItems : [], updatedAt: Date.now() };
+          saveLists();
+        } catch {
+          const id = genId();
+          listsState.activeListId=id;
+          listsState.lists[id] = { id, name:'Default', items: [], updatedAt: Date.now() };
+          saveLists();
+        }
+      }
+      // sync items
+      const active = listsState.lists[listsState.activeListId];
+      items = active?.items?.slice() || [];
+      saveState();
+      render();
+      rebuildActiveListSelect();
+      updateActiveListInfo();
+      updatePredictedTotal();
+    }
+    function saveLists(){ localStorage.setItem(LISTS_KEY, JSON.stringify(listsState)); }
+    function rebuildActiveListSelect(){
+      const sel=document.getElementById('activeListSelect'); if(!sel) return;
+      const arr = Object.values(listsState.lists).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+      sel.innerHTML = arr.map(l=>`<option value="${l.id}" ${l.id===listsState.activeListId?'selected':''}>${escapeHtml(l.name)}</option>`).join('');
+    }
+    function updateActiveListInfo(){
+      const info=document.getElementById('activeListInfo');
+      const lst = listsState.lists[listsState.activeListId];
+      if (info && lst) info.textContent = `Ultimo aggiornamento: ${new Date(lst.updatedAt||Date.now()).toLocaleString('it-IT')}`;
+    }
+    function onSwitchActiveList(id){ loadList(id); }
+    function loadList(id){
+      const lst = listsState.lists[id]; if(!lst) return;
+      listsState.activeListId = id;
+      items = lst.items.slice();
+      saveState(); saveLists(); render();
+      rebuildActiveListSelect();
+      updateActiveListInfo();
+      updatePredictedTotal();
+      notify('✓ Lista caricata: ' + lst.name);
+    }
+    function saveCurrentList(){
+      const id = listsState.activeListId; if(!id) return;
+      listsState.lists[id].items = items.slice();
+      listsState.lists[id].updatedAt = Date.now();
+      saveLists(); rebuildActiveListSelect(); updateActiveListInfo();
+      notify('✓ Lista salvata');
+    }
+    function saveCurrentListAsTop(){
+      const name = (document.getElementById('newListNameTop').value||'').trim();
+      if(!name){ alert('Inserisci un nome per la nuova lista'); return; }
+      const id = genId();
+      listsState.lists[id] = { id, name, items: items.slice(), updatedAt: Date.now() };
+      listsState.activeListId = id;
+      saveLists(); rebuildActiveListSelect(); updateActiveListInfo();
+      notify('✓ Nuova lista creata');
+      document.getElementById('newListNameTop').value = '';
+    }
+    function renameActiveList(){
+      const id = listsState.activeListId; const lst=listsState.lists[id]; if(!lst) return;
+      const newName = prompt('Nuovo nome lista:', lst.name);
+      if(!newName) return;
+      lst.name = newName.trim();
+      lst.updatedAt = Date.now();
+      saveLists(); rebuildActiveListSelect(); updateActiveListInfo();
+    }
+    function deleteActiveList(){
+      const id=listsState.activeListId; if(!id) return;
+      if(!confirm('Eliminare la lista attiva?')) return;
+      delete listsState.lists[id];
+      const remaining = Object.keys(listsState.lists);
+      if (remaining.length===0){
+        const newId=genId();
+        listsState.lists[newId]={id:newId,name:'Default',items:[],updatedAt:Date.now()};
+        listsState.activeListId=newId; items=[];
+      } else {
+        const firstId=remaining[0];
+        listsState.activeListId=firstId;
+        items=listsState.lists[firstId].items.slice();
+      }
+      saveState(); saveLists(); render(); rebuildActiveListSelect(); updateActiveListInfo(); updatePredictedTotal();
+    }
+
+    // === Lista: CRUD e parsing ===
+    function loadState(){ try{ const d=localStorage.getItem(STORAGE_KEY); if(d) { const legacy=JSON.parse(d); if(Array.isArray(legacy) && legacy.length && (!listsState.lists || !Object.keys(listsState.lists).length)){ items=legacy; } } }catch{} }
+    function saveState(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }catch{} }
+    function render(){
+      document.getElementById('count').textContent = items.length;
+      document.getElementById('rowCount').textContent = items.length;
+      const list=document.getElementById('itemsList');
+      if(items.length===0){
+        list.innerHTML='<div class="text-gray-400 text-center py-8 italic">Nessun articolo. Aggiungi o incolla una lista.</div>';
+        return;
+      }
+      list.innerHTML = items.map((it,idx)=>`
+        <div class="row">
+          <div class="grid grid-cols-1 md:grid-cols-8 gap-2 items-center">
+            <input type="text" value="${escapeHtml(it.product)}" placeholder="Prodotto" onchange="updateItem(${idx},'product',this.value)" class="border border-gray-300 rounded px-2 py-1 text-sm md:col-span-2">
+            <input type="text" value="${escapeHtml(it.brand)}" placeholder="Marca" onchange="updateItem(${idx},'brand',this.value)" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            <input type="text" value="${escapeHtml(it.size)}" placeholder="Quantità" onchange="updateItem(${idx},'size',this.value)" class="border border-gray-300 rounded px-2 py-1 text-sm">
+            <input type="number" value="${it.pezzi||1}" min="1" placeholder="Pz" onchange="updateItem(${idx},'pezzi',this.value)" class="border border-gray-300 rounded px-2 py-1 text-sm w-24">
+            <input type="number" value="${escapeHtml(it.maxprice||'')}" step="0.01" min="0" placeholder="Max €" onchange="updateItem(${idx},'maxprice',this.value)" class="border border-gray-300 rounded px-2 py-1 text-sm w-28">
+            <div class="flex items-center gap-2">
+              <button onclick="estimatePrice(${idx})" class="bg-amber-100 text-amber-700 px-2 py-1 rounded text-xs hover:bg-amber-200">Stima</button>
+              <span class="badge ${it.estimateStatus==='ok'?'badge-ok': (it.estimateStatus==='warn'?'badge-warn':'')}" title="${escapeHtml(it.estimateSource||'')}">
+                ${it.estimateLabel||'—'}
+              </span>
+            </div>
+            <div class="flex gap-1">
+              <button onclick="duplicateItem(${idx})" class="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs hover:bg-blue-200">Dup</button>
+              <button onclick="deleteItem(${idx})" class="bg-red-100 text-red-600 px-2 py-1 rounded text-xs hover:bg-red-200">×</button>
+            </div>
+          </div>
+        </div>`).join('');
+      updatePredictedTotal();
+    }
+    function addItem(){ items.push({product:'',brand:'',size:'',pezzi:1,maxprice:'',estimateLabel:'—'}); saveState(); render(); }
+    function updateItem(i,f,v){ items[i][f]=v; if(f==='maxprice') items[i].estimateLabel='manuale'; saveState(); if(f==='maxprice') updatePredictedTotal(); }
+    function duplicateItem(i){ items.splice(i+1,0,{...items[i]}); saveState(); render(); }
+    function deleteItem(i){ items.splice(i,1); saveState(); render(); }
+    function parseList(){
+      const text=document.getElementById('quickInput').value;
+      const lines=text.split('\n').filter(l=>l.trim());
+      lines.forEach(l=>{ const p=parseLine(l); if(p) items.push(p); });
+      saveState(); render(); document.getElementById('quickInput').value='';
+      notify('✓ Lista creata con '+lines.length+' righe');
+    }
+    function parseLine(line){
+      const original=line.trim(); if(!original) return null;
+      let pezzi=1; const m1=original.match(/x\s*(\d+)\b/i); if(m1) pezzi=parseInt(m1[1]);
+      const m2=original.match(/\b(\d+(?:[.,]\d+)?)\s?(kg|g|l|ml|x\d+g|x\d+ml)\b/i); const size=m2?m2[0].replace(/\s+/g,''):'';
+      const m3=original.match(/\b([A-Z][A-Za-zÀ-ÿ0-9'']{2,})\b/); const brand=m3?m3[1]:'';
+      const m4=original.match(/(?:max|prezzo\s*max|<=)\s*€?\s*(\d+(?:[.,]\d+)?)/i); const maxprice=m4?m4[1].replace(',','.'):'';
+      let product=original.replace(/x\s*\d+\b/i,'').replace(/\b(\d+(?:[.,]\d+)?)\s?(kg|g|l|ml|x\d+g|x\d+ml)\b/ig,'').replace(/\bn\.\s*\d+\b/ig,'').replace(/(?:max|prezzo\s*max|<=)\s*€?\s*\d+(?:[.,]\d+)?/ig,'').trim();
+      return {product,brand,size,pezzi,maxprice,estimateLabel:'—'};
+    }
+
+    // Export/Import Lista
+    function exportCSV(){
+      const headers=['product','brand','size','pezzi','maxprice'];
+      const rows=[headers.join(',')].concat(items.map(it=>headers.map(h=>{
+        const v=String(it[h]||''); return /[",\n]/.test(v)? '"'+v.replace(/"/g,'""')+'"':v;
+      }).join(',')));
+      download('lista_spesa.csv', rows.join('\n'),'text/csv');
+    }
+    function exportJSON(){ download('lista_spesa.json', JSON.stringify(items,null,2),'application/json'); }
+    function download(fn,content,type){ const blob=new Blob([content],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=fn; a.click(); setTimeout(()=>URL.revokeObjectURL(url),100); }
+    function importFile(e){
+      const file=e.target.files[0]; if(!file) return;
+      const r=new FileReader();
+      r.onload=(ev)=>{
+        const text=ev.target.result;
+        if(file.name.endsWith('.json')){
+          try{ items=JSON.parse(text)||[]; saveState(); render(); notify('✓ JSON importato'); }catch{ alert('Errore nel file JSON'); }
+        } else if(file.name.endsWith('.csv')){
+          const lines=text.split('\n').filter(l=>l.trim());
+          if(lines.length>1){
+            items=[]; for(let i=1;i<lines.length;i++){ const cols=parseCSVLine(lines[i]);
+              items.push({ product: cols[0]||'', brand: cols[1]||'', size: cols[2]||'', pezzi: parseInt(cols[3])||1, maxprice: cols[4]||'', estimateLabel:'—' });
+            }
+            saveState(); render(); notify('✓ CSV importato');
+          }
+        }
+      };
+      r.readAsText(file); e.target.value='';
+    }
+    function parseCSVLine(line){
+      const result=[]; let cur=''; let inQuotes=false;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch === '"'){
+          if(inQuotes && line[i+1] === '"'){ cur+='"'; i++; }
+          else inQuotes=!inQuotes;
+        } else if(ch===',' && !inQuotes){
+          result.push(cur); cur='';
+        } else {
+          cur+=ch;
+        }
+      }
+      result.push(cur);
+      return result;
+    }
+
+    // Totale massimo previsto
+    function updatePredictedTotal(){
+      let sum=0, count=0;
+      for(const it of items){
+        const v = parseFloat(String(it.maxprice||'').replace(',','.'));
+        if(!Number.isNaN(v) && v>=0){ sum += v * (parseInt(it.pezzi)||1); count++; }
+      }
+      document.getElementById('predictedTotal').textContent = fmtMoney(sum);
+      document.getElementById('maxCount').textContent = count;
+      document.getElementById('rowCount').textContent = items.length;
+      document.getElementById('predictedHint').classList.toggle('hidden', !(items.length>0 && count===0));
+      // aggiorna lista attiva
+      const lst = listsState.lists[listsState.activeListId];
+      if (lst){ lst.items = items.slice(); lst.updatedAt = Date.now(); saveLists(); updateActiveListInfo(); }
+    }
+
+    // === Stima prezzi (client-side, best-effort) ===
+    const LOCAL_PRICEBOOK = [
+      { test:/\bpasta\b.*barilla/i, euro:1.3 },
+      { test:/\blatte\b.*(intero|parzialmente)\b/i, euro:1.2 },
+      { test:/\bpassata\b.*mutti/i, euro:2.2 },
+      { test:/\btonno\b.*rio\s*mare/i, euro:4.5 },
+      { test:/\bmele\b/i, euro:2.5 }
+    ];
+    function buildQuery(it){ return [it.product,it.brand,it.size].filter(Boolean).join(' ').trim() || it.product || 'prodotto'; }
+
+    function estimatePrice(index){
+      const it = items[index];
+      const q = buildQuery(it);
+
+      // 1) Heuristica locale
+      const hay = (it.product + ' ' + it.brand + ' ' + it.size).toLowerCase();
+      const hit = LOCAL_PRICEBOOK.find(r=> r.test.test(hay));
+      if (hit){
+        it.maxprice = String(hit.euro.toFixed(2));
+        it.estimateLabel = 'locale';
+        it.estimateStatus = 'ok';
+        it.estimateSource = 'Heuristica locale';
+        saveState(); render(); notify(`✓ Stima locale: ${fmtMoney(hit.euro)} per "${q}"`);
+        return;
+      }
+
+      // 2) Metaricerca (assistita)
+      it.estimateLabel = 'link';
+      it.estimateStatus = 'warn';
+      it.estimateSource = 'Controlla link e incolla';
+      saveState(); render();
+
+      const urls = [
+        'https://www.google.com/search?q=' + encodeURIComponent(q + ' prezzo'),
+        'https://www.bing.com/search?q=' + encodeURIComponent(q + ' prezzo'),
+        'https://duckduckgo.com/?q=' + encodeURIComponent(q + ' prezzo'),
+      ];
+      const msg = 'Non ho una stima automatica sicura per: ' + q + '. Ho aperto una o più ricerche in nuove schede: trova un prezzo affidabile e incollalo nel campo Max.';
+
+      // prova ad aprire almento un tab
+      try {
+        const w = window.open(urls[0],'_blank','noopener');
+        if (!w || w.closed) throw new Error();
+      } catch {
+        // fallback: crea link cliccabili
+        let html = 'Apri manualmente: ' + urls.map(u => `<a href="${u}" target="_blank" class="underline text-blue-600">${u}</a>`).join(' • ');
+        notify('⚠ ' + q + ': apri i link per stimare il prezzo');
+        console.info(html);
+      }
+      console.warn(msg);
+    }
+
+    function estimateAllPrices(){
+      if (items.length===0) { alert('Nessun articolo'); return; }
+      items.forEach((_,i)=>estimatePrice(i));
+      updatePredictedTotal();
+    }
+
+    // === Ricerca ===
+    function renderSearch(){
+      const list=document.getElementById('searchList');
+      list.innerHTML = items.map((it,idx)=>{ const q=buildQuery(it); const cur=idx===currentIndex; const done=idx<currentIndex;
+        return `
+        <div class="border-2 rounded-lg p-3 ${cur?'current-item':''} ${done?'completed-item':'border-gray-200'}">
+          <div class="flex items-center gap-3">
+            <div class="text-lg font-bold ${done?'text-gray-400':'text-gray-700'}">${idx+1}.</div>
+            <div class="flex-1">
+              <div class="font-semibold ${done?'text-gray-400':'text-gray-900'}">${escapeHtml(q)}</div>
+              <div class="text-xs ${done?'text-gray-300':'text-gray-500'}">${it.brand?('Marca: '+escapeHtml(it.brand)+' • '):''}Pezzi: x${it.pezzi||1}${it.maxprice?(' • Max: €'+it.maxprice):''}</div>
+            </div>
+            ${done?'<div class="text-green-500 text-xl">✓</div>':''}
+            ${cur?'<div class="text-yellow-500 text-xl animate-pulse">👉</div>':''}
+          </div>
+        </div>`; }).join('');
+    }
+    function copyAndNotify(){
+      const it=items[currentIndex]; const q=buildQuery(it);
+      navigator.clipboard.writeText(q).then(()=>notify('✓ Copiato: '+q)).catch(()=>notify('⚠️ Copia manuale: '+q));
+      document.getElementById('currentQuery').textContent=q;
+      document.getElementById('currentMeta').textContent=`Prodotto ${currentIndex+1} di ${items.length} • Pezzi: x${it.pezzi}${it.maxprice? ' • Max: €'+it.maxprice:''}`;
+      document.getElementById('floatProgress').textContent=`${currentIndex+1}/${items.length}`;
+      document.getElementById('floatQuery').textContent=q.length>34? q.slice(0,34)+'…':q;
+    }
+    function startSearchMode(){
+      if(items.length===0){ alert('Aggiungi almeno un prodotto!'); return; }
+      currentIndex=0; renderSearch(); copyAndNotify();
+    }
+    function stopSearchMode(){ currentIndex=-1; render(); notify('Ricerca fermata'); }
+    function nextItem(){
+      currentIndex++;
+      if(currentIndex>=items.length){ notify('🎉 Ricerca completata!'); currentIndex=items.length-1; return; }
+      renderSearch(); copyAndNotify();
+    }
+
+    function openUrlWithFallback(url, sameTab){
+      if (inIframe() && sameTab) { notify('Apri prima questa app in una nuova scheda (banner giallo).'); return false; }
+      if (sameTab){ window.location.href=url; return false; }
+      const win = window.open(url,'_blank','noopener'); if (win && !win.closed) return false;
+      const a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>{ if(document.hasFocus()){ window.location.href=url; } },250);
+      return false;
+    }
+    function openStoreFallback(e,sameTab){ if(e) e.preventDefault(); return openUrlWithFallback(getStoreUrl(), sameTab); }
+    function forceOpenStore(){ if (inIframe()){ notify('Apri prima questa app in una nuova scheda (banner giallo).'); return; } window.location.href=getStoreUrl(); }
+    function testOpenStore(){ openUrlWithFallback(getStoreUrl(), false); }
+
+    // === Riepilogo spese & Grafico ===
+    function loadExpenses(){ try{ const d=localStorage.getItem(EXPENSES_KEY); if(d) expenses=JSON.parse(d); }catch{} }
+    function saveExpenses(){ localStorage.setItem(EXPENSES_KEY, JSON.stringify(expenses)); }
+    function addExpense(){
+      const date = toISO(document.getElementById('expDate').value || new Date());
+      const itemsN = parseInt(document.getElementById('expItems').value || '0',10);
+      const cost = parseFloat(String(document.getElementById('expCost').value||'0').replace(',','.'));
+      const note = (document.getElementById('expNote').value||'').trim();
+      if(!date){ alert('Inserisci una data valida'); return; }
+      if(Number.isNaN(itemsN) || itemsN<0){ alert('Numero articoli non valido'); return; }
+      if(Number.isNaN(cost) || cost<0){ alert('Costo non valido'); return; }
+      expenses.push({ date, items: itemsN, cost, note });
+      expenses.sort((a,b)=> a.date.localeCompare(b.date));
+      saveExpenses(); renderExpenses(); drawMonthlyChart();
+      document.getElementById('expItems').value=''; document.getElementById('expCost').value=''; document.getElementById('expNote').value='';
+    }
+    function deleteExpense(idx){ if(!confirm('Eliminare questa riga?')) return; expenses.splice(idx,1); saveExpenses(); renderExpenses(); drawMonthlyChart(); }
+    function loadTodayFromList(){
+      document.getElementById('expDate').value = toISO(new Date());
+      document.getElementById('expItems').value = items.length;
+      document.getElementById('expCost').focus();
+    }
+    function exportExpensesJSON(){ download('riepilogo_spese.json', JSON.stringify(expenses,null,2),'application/json'); }
+    function importExpensesJSON(e){
+      const file=e.target.files[0]; if(!file) return;
+      const r=new FileReader();
+      r.onload=(ev)=>{
+        try{ expenses=JSON.parse(ev.target.result)||[]; saveExpenses(); renderExpenses(); drawMonthlyChart(); notify('✓ Riepilogo importato'); }catch{ alert('Errore nel file JSON'); }
+      };
+      r.readAsText(file); e.target.value='';
+    }
+    function renderExpenses(){
+      const tbody=document.getElementById('expTable'); if(!tbody) return;
+      const rows=[];
+      for(let i=0;i<expenses.length;i++){
+        const e=expenses[i]; const prev=i>0 ? expenses[i-1] : null;
+        const delta = prev ? ((e.cost - prev.cost)/ (prev.cost || 1)) * 100 : null;
+        rows.push({...e, delta});
+      }
+      tbody.innerHTML = rows.map((r,idx)=>`
+        <tr class="border-b">
+          <td class="py-2 pr-3 whitespace-nowrap">${r.date}</td>
+          <td class="py-2 pr-3">${r.items}</td>
+          <td class="py-2 pr-3 font-semibold">${fmtMoney(r.cost)}</td>
+          <td class="py-2 pr-3 ${r.delta==null?'text-gray-400': (r.delta>=0?'text-red-600':'text-green-600')}">
+            ${r.delta==null? '—' : (r.delta>=0?'+':'')+r.delta.toFixed(1)+'%'}
+          </td>
+          <td class="py-2 pr-3">${r.note? escapeHtml(r.note):''}</td>
+          <td class="py-2 pr-3 text-right">
+            <button class="text-red-600 hover:underline" onclick="deleteExpense(${idx})">Elimina</button>
+          </td>
+        </tr>`).join('');
+
+      const now=new Date(); const y=now.getFullYear(); const m=now.getMonth()+1;
+      const inYear=expenses.filter(e=> Number(e.date.slice(0,4))===y);
+      const inMonth=expenses.filter(e=> Number(e.date.slice(0,4))===y && Number(e.date.slice(5,7))===m);
+      const sum = arr => arr.reduce((s,e)=> s + (e.cost||0), 0);
+      const sumItems = arr => arr.reduce((s,e)=> s + (e.items||0), 0);
+      const sumM=sum(inMonth); const sumY=sum(inYear);
+      const avgY=inYear.length ? sumY/inYear.length : 0;
+      const avgItemsPerExpense = inYear.length ? sumItems(inYear)/inYear.length : 0;
+
+      document.getElementById('sumMonth').textContent = fmtMoney(sumM);
+      document.getElementById('sumMonthMeta').textContent = `${inMonth.length} spese`;
+      document.getElementById('sumYear').textContent = fmtMoney(sumY);
+      document.getElementById('sumYearMeta').textContent = `${inYear.length} spese`;
+      document.getElementById('avgYear').textContent = fmtMoney(avgY);
+      document.getElementById('avgYearMeta').textContent = `${avgItemsPerExpense.toFixed(1)} articoli/spesa`;
+
+      const monthsTotal = getMonthlyTotals(y);
+      const filled = monthsTotal.filter(v=>v>0).length;
+      const metaEl = document.getElementById('chartMeta');
+      if (metaEl) metaEl.textContent = `Anno ${y} • ${filled}/12 mesi con spese`;
+    }
+    function getMonthlyTotals(year){
+      const totals = new Array(12).fill(0);
+      for(const e of expenses){
+        const y = Number(e.date.slice(0,4));
+        if (y===year){
+          const m = Number(e.date.slice(5,7)) - 1;
+          const cost = Number(e.cost)||0;
+          totals[m] += cost;
+        }
+      }
+      return totals;
+    }
+    function drawMonthlyChart(){
+      const canvas = document.getElementById('monthChart'); if(!canvas) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const padding = { left: 60, right: 20, top: 20, bottom: 40 };
+      const W = canvas.width, H = canvas.height;
+      const chartW = W - padding.left - padding.right;
+      const chartH = H - padding.top - padding.bottom;
+
+      const year = new Date().getFullYear();
+      const data = getMonthlyTotals(year);
+      const maxVal = Math.max(10, ...data);
+      const months = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+      // assi
+      ctx.strokeStyle = '#94a3b8'; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.moveTo(padding.left, H - padding.bottom);
+      ctx.lineTo(W - padding.right, H - padding.bottom);
+      ctx.moveTo(padding.left, H - padding.bottom);
+      ctx.lineTo(padding.left, padding.top);
+      ctx.stroke();
+
+      // tacche Y
+      ctx.fillStyle = '#334155'; ctx.font = '12px system-ui, -apple-system, sans-serif';
+      const ticks = 5;
+      for(let i=0;i<=ticks;i++){
+        const val = (maxVal/ticks)*i;
+        const y = H - padding.bottom - (val/maxVal)*chartH;
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(W - padding.right, y); ctx.stroke();
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(fmtMoney(val).replace('€','€ '), 6, y+4);
+      }
+
+      // barre
+      const barGap = 8;
+      const barWidth = Math.max(12, Math.floor((chartW - barGap*(data.length-1)) / data.length));
+      let x = padding.left;
+
+      for(let i=0;i<data.length;i++){
+        const v = data[i];
+        const h = (v/maxVal)*chartH;
+        const y = H - padding.bottom - h;
+
+        const grd = ctx.createLinearGradient(0, y, 0, y+h);
+        grd.addColorStop(0, '#34d399');
+        grd.addColorStop(1, '#10b981');
+        ctx.fillStyle = grd;
+        ctx.fillRect(x, y, barWidth, h);
+
+        if (v > 0) { ctx.fillStyle = '#111827'; ctx.font = '12px system-ui, -apple-system, sans-serif'; ctx.fillText(fmtMoney(v), x, y - 6); }
+        ctx.fillStyle = '#334155';
+        const text = months[i]; const textWidth = ctx.measureText(text).width;
+        const tx = x + barWidth/2 - textWidth/2;
+        ctx.fillText(text, tx, H - padding.bottom + 18);
+
+        x += barWidth + barGap;
+      }
+    }
+
+    // === Iframe guard ===
+    function applyIframeGuard(){
+      const banner=document.getElementById('iframeBanner');
+      const selfLink=document.getElementById('selfLink');
+      const sameBtn=document.getElementById('openStoreSameTab');
+      const forceBtn=document.getElementById('openStoreForce');
+      selfLink.href = window.location.href;
+      if (inIframe()){
+        banner.classList.add('show');
+        sameBtn?.classList.add('disabled');
+        forceBtn?.classList.add('disabled');
+      }
+    }
+
+    // === Hotkeys ===
+    window.addEventListener('keydown',(e)=>{
+      if(['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+      if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key.toLowerCase()==='n'){
+e.preventDefault();
+        nextItem();
+      }
+      if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key.toLowerCase()==='o'){
+        e.preventDefault();
+        // Apri sito in nuova scheda
+        openStoreFallback(null, false);
+      }
+    });
+
+    // === Pulsante Esempio (2 step: riempie solo la textarea) ===
+    function loadExample(){
+      const example = [
+        'pasta Barilla n.5 1kg x2',
+        'latte intero 1L x6',
+        'passata di pomodoro Mutti 700g x3 max 2.20€',
+        'mele Fuji 1kg x2 max 2.80€',
+        'tonno Rio Mare 3x80g x1 max 4.50€'
+      ].join('\n');
+
+      const ta = document.getElementById('quickInput');
+      ta.value = example;
+      ta.focus();
+      if (ta.setSelectionRange) ta.setSelectionRange(0, example.length);
+      ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      notify('✓ Esempio incollato nell’area di testo. Premi “Crea righe”.');
+    }
+
+    // === Init ===
+    document.addEventListener('DOMContentLoaded', () => {
+      applyIframeGuard();
+      loadSettings();
+      loadLists();
+      loadExpenses();
+
+      // Precompila data spesa con oggi
+      const expDate = document.getElementById('expDate');
+      if (expDate && !expDate.value) expDate.value = toISO(new Date());
+
+      renderExpenses();
+      drawMonthlyChart();
+
+      // Attiva tab Lista di default
+      switchTab('lista');
+    });
+  </script>
+</body>
+</html>
